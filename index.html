@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-  <meta charset="UTF-8">
-  <title>实时手势识别（含骨架绘制）</title>
+  <meta charset="UTF-8" />
+  <title>实时手势识别 + 骨架绘制（无残留）</title>
   <style>
     body {
       margin: 0;
@@ -28,18 +28,19 @@
       position: absolute;
       top: 0;
       left: 0;
+      pointer-events: none; /* 让画布不挡住视频操作 */
     }
   </style>
 </head>
 <body>
-  <h2>🖐️ 实时手势识别</h2>
+  <h2>🖐️ 实时手势识别（无残留骨架绘制）</h2>
   <div id="gestureName">识别中...</div>
   <div id="container">
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
   </div>
 
-  <!-- 引入依赖 -->
+  <!-- 依赖库 -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
@@ -47,54 +48,38 @@
   <script src="https://cdn.jsdelivr.net/npm/fingerpose@0.1.0/dist/fingerpose.min.js"></script>
 
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const gestureName = document.getElementById('gestureName');
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const gestureName = document.getElementById("gestureName");
 
+    // 初始化 fingerpose 手势估计器，使用内置手势
     const GE = new fp.GestureEstimator([
       fp.Gestures.ThumbsUpGesture,
       fp.Gestures.VictoryGesture,
       fp.Gestures.FistGesture,
-      fp.Gestures.OpenPalmGesture
+      fp.Gestures.OpenPalmGesture,
     ]);
 
+    // 初始化 MediaPipe Hands
     const hands = new Hands({
-      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      locateFile: (file) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
 
     hands.setOptions({
       maxNumHands: 1,
       modelComplexity: 1,
       minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7
+      minTrackingConfidence: 0.7,
     });
 
-    hands.onResults(results => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
+    hands.onResults(onResults);
 
-        // 绘制关键点和连接线
-        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
-        drawLandmarksFn(ctx, landmarks, { color: '#FF0000', lineWidth: 1 });
-
-        // 使用 fingerpose 识别手势
-        const estimatedGestures = GE.estimate(landmarks, 7.5);
-        if (estimatedGestures.gestures.length > 0) {
-          const best = estimatedGestures.gestures.reduce((p, c) => p.score > c.score ? p : c);
-          gestureName.innerText = `识别到手势：${best.name}`;
-        } else {
-          gestureName.innerText = '手势未知';
-        }
-      } else {
-        gestureName.innerText = '识别中...';
-      }
-    });
-
+    // 启动摄像头
     async function startCamera() {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: 640, height: 480 }
+        video: { facingMode: "user", width: 640, height: 480 },
       });
       video.srcObject = stream;
 
@@ -106,9 +91,41 @@
       };
     }
 
+    // 每帧处理
     async function processVideo() {
       await hands.send({ image: video });
       requestAnimationFrame(processVideo);
+    }
+
+    function onResults(results) {
+      // 每帧先清空画布（擦除上次骨架）
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+
+        // 画骨架连接线和关键点
+        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
+          color: "#00FF00",
+          lineWidth: 2,
+        });
+        drawLandmarksFn(ctx, landmarks, { color: "#FF0000", lineWidth: 1 });
+
+        // fingerpose 识别手势
+        const est = GE.estimate(landmarks, 7.5);
+        if (est.gestures.length > 0) {
+          const best = est.gestures.reduce((p, c) =>
+            p.score > c.score ? p : c
+          );
+          gestureName.innerText = `识别到手势：${best.name}`;
+        } else {
+          gestureName.innerText = "手势未知";
+        }
+      } else {
+        // 没有检测到手
+        gestureName.innerText = "识别中...";
+        // 画布已清空，骨架自然消失
+      }
     }
 
     startCamera();
