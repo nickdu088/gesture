@@ -2,18 +2,42 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>手势识别 + 骨架绘制</title>
+  <title>实时手势识别（含骨架绘制）</title>
   <style>
-    body { margin: 0; background: #111; color: #fff; text-align: center; font-family: sans-serif; }
-    #gesture { font-size: 24px; margin: 10px; color: #0f0; }
-    video, canvas { width: 100%; max-width: 480px; border-radius: 12px; }
+    body {
+      margin: 0;
+      background: #000;
+      color: #0f0;
+      text-align: center;
+      font-family: sans-serif;
+    }
+    #gestureName {
+      font-size: 24px;
+      margin-top: 10px;
+    }
+    #container {
+      position: relative;
+      display: inline-block;
+    }
+    video, canvas {
+      width: 100%;
+      max-width: 480px;
+      border-radius: 10px;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
   </style>
 </head>
 <body>
-  <h2>📱 iPhone Safari 兼容手势识别</h2>
-  <div id="gesture">识别中...</div>
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas"></canvas>
+  <h2>🖐️ 实时手势识别</h2>
+  <div id="gestureName">识别中...</div>
+  <div id="container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+  </div>
 
   <!-- 引入依赖 -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
@@ -26,22 +50,48 @@
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const gestureEl = document.getElementById('gesture');
+    const gestureName = document.getElementById('gestureName');
 
-    // 初始化 MediaPipe Hands
+    const GE = new fp.GestureEstimator([
+      fp.Gestures.ThumbsUpGesture,
+      fp.Gestures.VictoryGesture,
+      fp.Gestures.FistGesture,
+      fp.Gestures.OpenPalmGesture
+    ]);
+
     const hands = new Hands({
       locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
+
     hands.setOptions({
       maxNumHands: 1,
       modelComplexity: 1,
       minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.6
+      minTrackingConfidence: 0.7
     });
 
-    hands.onResults(onResults);
+    hands.onResults(results => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
 
-    // 启动摄像头
+        // 绘制关键点和连接线
+        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
+        drawLandmarksFn(ctx, landmarks, { color: '#FF0000', lineWidth: 1 });
+
+        // 使用 fingerpose 识别手势
+        const estimatedGestures = GE.estimate(landmarks, 7.5);
+        if (estimatedGestures.gestures.length > 0) {
+          const best = estimatedGestures.gestures.reduce((p, c) => p.score > c.score ? p : c);
+          gestureName.innerText = `识别到手势：${best.name}`;
+        } else {
+          gestureName.innerText = '手势未知';
+        }
+      } else {
+        gestureName.innerText = '识别中...';
+      }
+    });
+
     async function startCamera() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 640, height: 480 }
@@ -52,49 +102,13 @@
         video.play();
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        runDetection();
+        requestAnimationFrame(processVideo);
       };
     }
 
-    async function runDetection() {
+    async function processVideo() {
       await hands.send({ image: video });
-      requestAnimationFrame(runDetection);
-    }
-
-    // 定义常用手势
-    const GE = new fp.GestureEstimator([
-      fp.Gestures.ThumbsUpGesture,
-      fp.Gestures.VictoryGesture,
-      fp.Gestures.OpenPalmGesture,
-      fp.Gestures.FistGesture
-    ]);
-
-    // 绘制手骨架
-    function drawLandmarks(landmarks) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 3 });
-      drawLandmarksFn(ctx, landmarks, { color: '#FF0000', lineWidth: 2 });
-    }
-
-    function onResults(results) {
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-
-        // 绘制骨架
-        drawLandmarks(landmarks);
-
-        // 解析 landmarks 为 fingerpose 格式
-        const gesture = GE.estimate(landmarks, 7.5);
-        if (gesture.gestures.length > 0) {
-          const best = gesture.gestures.reduce((p, c) => p.score > c.score ? p : c);
-          gestureEl.innerText = `识别到手势：${best.name}`;
-        } else {
-          gestureEl.innerText = '手势未知';
-        }
-      } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        gestureEl.innerText = '识别中...';
-      }
+      requestAnimationFrame(processVideo);
     }
 
     startCamera();
