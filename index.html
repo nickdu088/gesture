@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>实时手势骨架跟踪</title>
+  <title>实时无刷新手势骨架跟踪</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4">
-  <h1 class="text-3xl font-bold mb-4 select-none">🖐️ 实时手势骨架跟踪</h1>
+  <h1 class="text-3xl font-bold mb-4 select-none">🖐️ 实时无刷新手势骨架跟踪</h1>
   <div id="gestureName" class="mb-4 text-xl min-h-[2rem] select-none">识别中...</div>
 
   <div id="container" class="relative w-full max-w-md rounded-lg shadow-lg overflow-hidden">
@@ -37,6 +37,7 @@
     const ctx = canvas.getContext("2d");
     const gestureName = document.getElementById("gestureName");
 
+    // 初始化 fingerpose 手势估计器
     const GE = new fp.GestureEstimator([
       fp.Gestures.ThumbsUpGesture,
       fp.Gestures.VictoryGesture,
@@ -51,8 +52,8 @@
     hands.setOptions({
       maxNumHands: 1,
       modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7,
+      minDetectionConfidence: 0.75,
+      minTrackingConfidence: 0.75,
     });
 
     hands.onResults(onResults);
@@ -65,11 +66,11 @@
         video.srcObject = stream;
         await video.play();
 
-        // 设置canvas尺寸和视频一致
+        // 设置canvas尺寸匹配视频
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
-        // 开始处理视频帧
+        // 开始循环处理视频帧
         requestAnimationFrame(processVideo);
       } catch (e) {
         gestureName.textContent = "摄像头启动失败，请检查权限和设备";
@@ -78,40 +79,37 @@
     }
 
     async function processVideo() {
-      // 发送当前帧给模型，等待结果回调
-      await hands.send({ image: video });
-      // 下一帧继续处理
+      try {
+        await hands.send({ image: video });
+      } catch (error) {
+        // 如果模型偶尔异常，打印并继续
+        console.warn("Hands.send() error:", error);
+      }
       requestAnimationFrame(processVideo);
     }
 
     function onResults(results) {
-      // 每帧开始清空画布，避免旧骨架残留
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
 
-        // 绘制骨架连接线和关键点
         drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
           color: "#22c55e",
           lineWidth: 3,
         });
         drawLandmarksFn(ctx, landmarks, { color: "#dc2626", lineWidth: 2 });
 
-        // 估计手势
         const est = GE.estimate(landmarks, 7.5);
         if (est.gestures.length > 0) {
-          const best = est.gestures.reduce((p, c) =>
-            p.score > c.score ? p : c
-          );
+          const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
           gestureName.textContent = `识别到手势：${best.name}`;
         } else {
           gestureName.textContent = "手势未知";
         }
       } else {
-        // 没检测到手，清空显示
         gestureName.textContent = "识别中...";
-        // 画布已被 clearRect 清空，不显示骨架
+        // 画布已清空，无骨架显示
       }
     }
 
