@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <title>实时手势识别 + 骨架绘制（无残留）</title>
+  <title>实时手势追踪与骨架绘制</title>
   <style>
     body {
       margin: 0;
@@ -28,12 +28,12 @@
       position: absolute;
       top: 0;
       left: 0;
-      pointer-events: none; /* 让画布不挡住视频操作 */
+      pointer-events: none; /* 确保视频可交互 */
     }
   </style>
 </head>
 <body>
-  <h2>🖐️ 实时手势识别（无残留骨架绘制）</h2>
+  <h2>🖐️ 实时手势追踪与骨架绘制</h2>
   <div id="gestureName">识别中...</div>
   <div id="container">
     <video id="video" autoplay playsinline muted></video>
@@ -91,29 +91,33 @@
       };
     }
 
-    // 每帧处理
+    // 持续调用，实时处理视频帧
     async function processVideo() {
+      // 每帧把当前视频帧发送给hands模型进行处理
       await hands.send({ image: video });
+      // 递归调用，保证下一帧继续处理
       requestAnimationFrame(processVideo);
     }
 
+    // hands模型处理结果回调
     function onResults(results) {
-      // 每帧先清空画布（擦除上次骨架）
+      // 清空画布，避免骨架残留
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
 
-        // 画骨架连接线和关键点
+        // 绘制骨架：连接线 + 关键点
         drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
           color: "#00FF00",
           lineWidth: 2,
         });
         drawLandmarksFn(ctx, landmarks, { color: "#FF0000", lineWidth: 1 });
 
-        // fingerpose 识别手势
+        // 使用 fingerpose 估计手势
         const est = GE.estimate(landmarks, 7.5);
         if (est.gestures.length > 0) {
+          // 找出置信度最高的手势
           const best = est.gestures.reduce((p, c) =>
             p.score > c.score ? p : c
           );
@@ -122,9 +126,8 @@
           gestureName.innerText = "手势未知";
         }
       } else {
-        // 没有检测到手
+        // 没检测到手，清空骨架，显示提示
         gestureName.innerText = "识别中...";
-        // 画布已清空，骨架自然消失
       }
     }
 
