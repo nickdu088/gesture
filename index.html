@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>实时手势骨架跟踪-自恢复完整版</title>
+  <title>实时手势骨架跟踪 - 完整示例</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4">
-  <h1 class="text-3xl font-bold mb-4 select-none">🖐️ 实时手势骨架跟踪（自恢复）</h1>
+  <h1 class="text-3xl font-bold mb-4 select-none">🖐️ 实时手势骨架跟踪</h1>
   <div id="gestureName" class="mb-4 text-xl min-h-[2rem] select-none">启动中...</div>
   <div id="status" class="mb-4 text-sm text-gray-400 select-none">状态日志：</div>
 
@@ -59,7 +59,6 @@
 
     hands.onResults(onResults);
 
-    // 监控循环状态，超时重启
     let lastResultTime = 0;
     const MAX_IDLE_MS = 3000;
 
@@ -94,7 +93,7 @@
         logStatus("hands.send()异常，尝试继续: " + e.message);
         console.warn(e);
       }
-      // 检查是否卡住
+
       const now = performance.now();
       if (now - lastResultTime > MAX_IDLE_MS) {
         logStatus("检测到识别卡住，尝试重启processVideo循环...");
@@ -117,13 +116,23 @@
         });
         drawLandmarks(ctx, landmarks, { color: "#dc2626", lineWidth: 2 });
 
-        const est = GE.estimate(landmarks, 7.5);
-        if (est.gestures.length > 0) {
-          const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
-          gestureName.textContent = `识别到手势：${best.name}`;
+        if (Array.isArray(landmarks) && landmarks.length === 21) {
+          try {
+            const est = GE.estimate(landmarks, 7.5);
+            if (est.gestures.length > 0) {
+              const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
+              gestureName.textContent = `识别到手势：${best.name}`;
+            } else {
+              gestureName.textContent = "手势未知";
+            }
+          } catch (e) {
+            console.error("fingerpose估计异常:", e);
+            gestureName.textContent = "手势估计出错";
+          }
         } else {
-          gestureName.textContent = "手势未知";
+          gestureName.textContent = "手势关键点格式错误";
         }
+
         logStatus("手势检测正常运行");
       } else {
         gestureName.textContent = "识别中...";
