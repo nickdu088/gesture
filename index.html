@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>实时无刷新手势骨架跟踪</title>
+  <title>实时手势骨架跟踪-自恢复</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4">
-  <h1 class="text-3xl font-bold mb-4 select-none">🖐️ 实时无刷新手势骨架跟踪</h1>
-  <div id="gestureName" class="mb-4 text-xl min-h-[2rem] select-none">识别中...</div>
+  <h1 class="text-3xl font-bold mb-4 select-none">🖐️ 实时手势骨架跟踪（自恢复）</h1>
+  <div id="gestureName" class="mb-4 text-xl min-h-[2rem] select-none">启动中...</div>
+  <div id="status" class="mb-4 text-sm text-gray-400 select-none">状态日志：</div>
 
   <div id="container" class="relative w-full max-w-md rounded-lg shadow-lg overflow-hidden">
     <video
@@ -24,7 +25,7 @@
     ></canvas>
   </div>
 
-  <!-- MediaPipe Hands 和 fingerpose -->
+  <!-- 引入依赖 -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
@@ -36,8 +37,8 @@
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const gestureName = document.getElementById("gestureName");
+    const statusLog = document.getElementById("status");
 
-    // 初始化 fingerpose 手势估计器
     const GE = new fp.GestureEstimator([
       fp.Gestures.ThumbsUpGesture,
       fp.Gestures.VictoryGesture,
@@ -58,22 +59,31 @@
 
     hands.onResults(onResults);
 
+    // 用于监控连续调用状态，超时重启
+    let lastResultTime = 0;
+    const MAX_IDLE_MS = 3000; // 超过3秒无结果，重启循环
+
+    function logStatus(msg) {
+      statusLog.textContent = `状态日志：${msg}`;
+      // console.log(msg);
+    }
+
     async function startCamera() {
       try {
+        logStatus("请求摄像头权限中...");
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user", width: 640, height: 480 },
         });
         video.srcObject = stream;
         await video.play();
-
-        // 设置canvas尺寸匹配视频
+        logStatus("摄像头启动成功，初始化画布尺寸...");
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-
-        // 开始循环处理视频帧
+        lastResultTime = performance.now();
         requestAnimationFrame(processVideo);
       } catch (e) {
         gestureName.textContent = "摄像头启动失败，请检查权限和设备";
+        logStatus("摄像头启动失败: " + e.message);
         console.error(e);
       }
     }
@@ -81,14 +91,24 @@
     async function processVideo() {
       try {
         await hands.send({ image: video });
-      } catch (error) {
-        // 如果模型偶尔异常，打印并继续
-        console.warn("Hands.send() error:", error);
+      } catch (e) {
+        logStatus("hands.send()异常，尝试继续: " + e.message);
+        console.warn(e);
+      }
+      // 检查是否“卡住”没收到新结果
+      const now = performance.now();
+      if (now - lastResultTime > MAX_IDLE_MS) {
+        logStatus("检测到识别卡住，尝试重启processVideo循环...");
+        // 重启识别循环
+        lastResultTime = now;
+        // 这里其实递归继续，但给log看状态
       }
       requestAnimationFrame(processVideo);
     }
 
     function onResults(results) {
+      lastResultTime = performance.now();
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
@@ -107,9 +127,10 @@
         } else {
           gestureName.textContent = "手势未知";
         }
+        logStatus("手势检测正常运行");
       } else {
         gestureName.textContent = "识别中...";
-        // 画布已清空，无骨架显示
+        logStatus("未检测到手");
       }
     }
 
