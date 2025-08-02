@@ -1,93 +1,103 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-  <meta charset="UTF-8" />
-  <title>手机手势识别 Demo</title>
+  <meta charset="UTF-8">
+  <title>手势识别 + 骨架绘制</title>
   <style>
-    body { margin: 0; font-family: sans-serif; background: #222; color: #eee; text-align: center; }
-    #container { position: relative; display: inline-block; }
-    video { width: 320px; height: 240px; transform: scaleX(-1); }
-    canvas { position: absolute; top: 0; left: 50%; transform: translateX(-50%); }
-    #gestureOutput { position: absolute; top: 8px; width: 100%; font-size: 18px; color: #0f0; }
-    button { margin: 12px; padding: 8px 16px; font-size: 16px; }
+    body { margin: 0; background: #111; color: #fff; text-align: center; font-family: sans-serif; }
+    #gesture { font-size: 24px; margin: 10px; color: #0f0; }
+    video, canvas { width: 100%; max-width: 480px; border-radius: 12px; }
   </style>
 </head>
 <body>
-  <h1>手机手势识别 Demo</h1>
-  <button id="toggleCamera">切换前/后摄像头</button>
-  <div id="container">
-    <div id="gestureOutput"></div>
-    <video id="webcam" autoplay playsinline muted></video>
-    <canvas id="output_canvas" width="320" height="240"></canvas>
-  </div>
+  <h2>📱 iPhone Safari 兼容手势识别</h2>
+  <div id="gesture">识别中...</div>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
 
-  <script type="module">
-    import { GestureRecognizer, FilesetResolver, DrawingUtils } from 'https://cdn.skypack.dev/@mediapipe/tasks-vision';
+  <!-- 引入依赖 -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fingerpose@0.1.0/dist/fingerpose.min.js"></script>
 
-    const video = document.getElementById('webcam');
-    const canvas = document.getElementById('output_canvas');
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const gestureOutput = document.getElementById('gestureOutput');
-    const toggleButton = document.getElementById('toggleCamera');
+    const gestureEl = document.getElementById('gesture');
 
-    let gestureRecognizer;
-    let stream = null;
-    let usingFront = true;
+    // 初始化 MediaPipe Hands
+    const hands = new Hands({
+      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.6
+    });
 
-    async function loadModel() {
-      const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm');
-      gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/gesture_recognizer.task' },
-        runningMode: 'LIVE_STREAM',
-        numHands: 1,
-        minHandDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-        minHandPresenceConfidence: 0.5
+    hands.onResults(onResults);
+
+    // 启动摄像头
+    async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 }
       });
+      video.srcObject = stream;
+
+      video.onloadedmetadata = () => {
+        video.play();
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        runDetection();
+      };
+    }
+
+    async function runDetection() {
+      await hands.send({ image: video });
+      requestAnimationFrame(runDetection);
+    }
+
+    // 定义常用手势
+    const GE = new fp.GestureEstimator([
+      fp.Gestures.ThumbsUpGesture,
+      fp.Gestures.VictoryGesture,
+      fp.Gestures.OpenPalmGesture,
+      fp.Gestures.FistGesture
+    ]);
+
+    // 绘制手骨架
+    function drawLandmarks(landmarks) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 3 });
+      drawLandmarksFn(ctx, landmarks, { color: '#FF0000', lineWidth: 2 });
     }
 
     function onResults(results) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (results.landmarks) DrawingUtils.drawLandmarks(results.landmarks, {ctx});
-      if (results.gestures && results.gestures.length > 0) {
-        const g = results.gestures[0][0];
-        gestureOutput.innerText = `${g.categoryName} · ${(g.score*100).toFixed(1)}%`;
-      } else {
-        gestureOutput.innerText = '未检测到手势';
-      }
-    }
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
 
-    async function startCamera() {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-      }
-      const constraints = {
-        video: {
-          facingMode: usingFront ? 'user' : 'environment',
-          width: 320, height: 240
+        // 绘制骨架
+        drawLandmarks(landmarks);
+
+        // 解析 landmarks 为 fingerpose 格式
+        const gesture = GE.estimate(landmarks, 7.5);
+        if (gesture.gestures.length > 0) {
+          const best = gesture.gestures.reduce((p, c) => p.score > c.score ? p : c);
+          gestureEl.innerText = `识别到手势：${best.name}`;
+        } else {
+          gestureEl.innerText = '手势未知';
         }
-      };
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream;
-      await video.play();
-      requestAnimationFrame(runRecognition);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        gestureEl.innerText = '识别中...';
+      }
     }
 
-    async function runRecognition() {
-      const now = performance.now();
-      await gestureRecognizer.recognizeForVideo(video, now, onResults);
-      requestAnimationFrame(runRecognition);
-    }
-
-    window.onload = async () => {
-      await loadModel();
-      await startCamera();
-    };
-
-    toggleButton.onclick = async () => {
-      usingFront = !usingFront;
-      await startCamera();
-    };
+    startCamera();
   </script>
 </body>
 </html>
