@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>手机手势识别 Demo</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #222; color: #eee; text-align: center; }
+    #container { position: relative; display: inline-block; }
+    video { width: 320px; height: 240px; transform: scaleX(-1); }
+    canvas { position: absolute; top: 0; left: 50%; transform: translateX(-50%); }
+    #gestureOutput { position: absolute; top: 8px; width: 100%; font-size: 18px; color: #0f0; }
+    button { margin: 12px; padding: 8px 16px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>手机手势识别 Demo</h1>
+  <button id="toggleCamera">切换前/后摄像头</button>
+  <div id="container">
+    <div id="gestureOutput"></div>
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="output_canvas" width="320" height="240"></canvas>
+  </div>
+
+  <script type="module">
+    import { GestureRecognizer, FilesetResolver, DrawingUtils } from 'https://cdn.skypack.dev/@mediapipe/tasks-vision';
+
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('output_canvas');
+    const ctx = canvas.getContext('2d');
+    const gestureOutput = document.getElementById('gestureOutput');
+    const toggleButton = document.getElementById('toggleCamera');
+
+    let gestureRecognizer;
+    let stream = null;
+    let usingFront = true;
+
+    async function loadModel() {
+      const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm');
+      gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/gesture_recognizer.task' },
+        runningMode: 'LIVE_STREAM',
+        numHands: 1,
+        minHandDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+        minHandPresenceConfidence: 0.5
+      });
+    }
+
+    function onResults(results) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (results.landmarks) DrawingUtils.drawLandmarks(results.landmarks, {ctx});
+      if (results.gestures && results.gestures.length > 0) {
+        const g = results.gestures[0][0];
+        gestureOutput.innerText = `${g.categoryName} · ${(g.score*100).toFixed(1)}%`;
+      } else {
+        gestureOutput.innerText = '未检测到手势';
+      }
+    }
+
+    async function startCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
+      const constraints = {
+        video: {
+          facingMode: usingFront ? 'user' : 'environment',
+          width: 320, height: 240
+        }
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+      requestAnimationFrame(runRecognition);
+    }
+
+    async function runRecognition() {
+      const now = performance.now();
+      await gestureRecognizer.recognizeForVideo(video, now, onResults);
+      requestAnimationFrame(runRecognition);
+    }
+
+    window.onload = async () => {
+      await loadModel();
+      await startCamera();
+    };
+
+    toggleButton.onclick = async () => {
+      usingFront = !usingFront;
+      await startCamera();
+    };
+  </script>
+</body>
+</html>
