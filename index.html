@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>实时手势骨架跟踪-自恢复</title>
+  <title>实时手势骨架跟踪-自恢复完整版</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4">
@@ -59,18 +59,17 @@
 
     hands.onResults(onResults);
 
-    // 用于监控连续调用状态，超时重启
+    // 监控循环状态，超时重启
     let lastResultTime = 0;
-    const MAX_IDLE_MS = 3000; // 超过3秒无结果，重启循环
+    const MAX_IDLE_MS = 3000;
 
     function logStatus(msg) {
       statusLog.textContent = `状态日志：${msg}`;
-      // console.log(msg);
     }
 
     async function startCamera() {
       try {
-        logStatus("请求摄像头权限中...");
+        logStatus("请求摄像头权限...");
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user", width: 640, height: 480 },
         });
@@ -95,13 +94,11 @@
         logStatus("hands.send()异常，尝试继续: " + e.message);
         console.warn(e);
       }
-      // 检查是否“卡住”没收到新结果
+      // 检查是否卡住
       const now = performance.now();
       if (now - lastResultTime > MAX_IDLE_MS) {
         logStatus("检测到识别卡住，尝试重启processVideo循环...");
-        // 重启识别循环
         lastResultTime = now;
-        // 这里其实递归继续，但给log看状态
       }
       requestAnimationFrame(processVideo);
     }
@@ -118,7 +115,7 @@
           color: "#22c55e",
           lineWidth: 3,
         });
-        drawLandmarksFn(ctx, landmarks, { color: "#dc2626", lineWidth: 2 });
+        drawLandmarks(ctx, landmarks, { color: "#dc2626", lineWidth: 2 });
 
         const est = GE.estimate(landmarks, 7.5);
         if (est.gestures.length > 0) {
