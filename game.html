@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>抓花朵小游戏</title>
+  <title>抓花朵小游戏 - 调试版</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
@@ -12,7 +12,7 @@
   </style>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4 select-none">
-  <h1 class="text-3xl font-bold mb-2">🌸 抓花朵小游戏</h1>
+  <h1 class="text-3xl font-bold mb-2">🌸 抓花朵小游戏（调试版）</h1>
   <div id="gestureName" class="mb-2 text-xl min-h-[2rem]">启动中...</div>
   <div id="score" class="mb-2 text-xl">得分：0</div>
   <div id="status" class="text-sm text-gray-400 mb-4">状态日志：</div>
@@ -23,7 +23,6 @@
     <canvas id="flowerCanvas" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></canvas>
   </div>
 
-  <!-- 依赖 -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
@@ -79,10 +78,14 @@
         });
         video.srcObject = stream;
         await video.play();
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        flowerCanvas.width = video.videoWidth;
-        flowerCanvas.height = video.videoHeight;
+
+        [canvas, flowerCanvas].forEach(c => {
+          c.width = video.videoWidth;
+          c.height = video.videoHeight;
+          c.style.width = video.videoWidth + "px";
+          c.style.height = video.videoHeight + "px";
+        });
+
         lastResultTime = performance.now();
         requestAnimationFrame(processVideo);
       } catch (e) {
@@ -125,6 +128,22 @@
         });
         drawLandmarks(ctx, landmarks, { color: "#dc2626", lineWidth: 2 });
 
+        // 标记每个关键点，方便调试
+        landmarks.forEach((pt, idx) => {
+          const x = pt.x * canvas.width;
+          const y = pt.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = "rgba(255, 255, 0, 0.8)";
+          ctx.fill();
+          ctx.strokeStyle = "black";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = "black";
+          ctx.font = "12px Arial";
+          ctx.fillText(idx, x + 6, y - 6);
+        });
+
         if (landmarks.length === 21) {
           try {
             const est = GE.estimate(landmarks, 7.5);
@@ -132,7 +151,6 @@
               const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
               gestureName.textContent = `识别到手势：${best.name}`;
 
-              // 任意关键点触碰花朵判定
               const points = landmarks.map(p => ({
                 x: p.x * canvas.width,
                 y: p.y * canvas.height,
@@ -143,16 +161,14 @@
                 const touched = points.some(pt => {
                   const dx = pt.x - flower.x;
                   const dy = pt.y - flower.y;
-                  return Math.sqrt(dx * dx + dy * dy) < 40;
+                  return Math.sqrt(dx * dx + dy * dy) < 50;
                 });
-
                 if (touched) {
                   flowers.splice(i, 1);
                   score++;
                   scoreDisplay.textContent = `得分：${score}`;
                 }
               }
-
             } else {
               gestureName.textContent = "手势未知";
             }
@@ -173,15 +189,24 @@
 
     function updateFlowers() {
       flowerCtx.font = "30px serif";
-      for (const flower of flowers) {
+      flowers.forEach((flower) => {
         flower.y += flower.speed;
+
+        // 画花朵
         flowerCtx.fillText("🌸", flower.x, flower.y);
-      }
-      flowers = flowers.filter(f => f.y < flowerCanvas.height + 30);
+
+        // 画检测圆圈，调试用
+        flowerCtx.beginPath();
+        flowerCtx.strokeStyle = "yellow";
+        flowerCtx.lineWidth = 2;
+        flowerCtx.arc(flower.x, flower.y - 15, 50, 0, 2 * Math.PI);
+        flowerCtx.stroke();
+      });
+      flowers = flowers.filter(f => f.y < flowerCanvas.height + 50);
     }
 
     function spawnFlower() {
-      const x = Math.random() * (flowerCanvas.width - 30);
+      const x = 50 + Math.random() * (flowerCanvas.width - 100);
       const speed = 2 + Math.random() * 2;
       flowers.push({ x, y: -30, speed });
     }
