@@ -6,24 +6,24 @@
   <title>抓花朵小游戏</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body {
-      overflow: hidden;
-    }
+    body { overflow: hidden; }
+    canvas { pointer-events: none; }
   </style>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4 select-none">
   <h1 class="text-3xl font-bold mb-2">🌸 抓花朵小游戏</h1>
-  <div id="gestureName" class="mb-2 text-xl min-h-[2rem]">启动中...</div>
-  <div id="score" class="mb-2 text-xl">得分：0</div>
+  <div id="gestureName" class="mb-1 text-xl min-h-[2rem]">启动中...</div>
+  <div id="score" class="mb-1 text-xl">得分：0</div>
+  <div id="timer" class="mb-1 text-xl">剩余时间：30 秒</div>
   <div id="status" class="text-sm text-gray-400 mb-4">状态日志：</div>
 
   <div id="container" class="relative w-full max-w-md rounded-lg shadow-lg overflow-hidden">
     <video id="video" autoplay playsinline muted class="w-full rounded-lg object-cover"></video>
-    <canvas id="canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none z-20"></canvas>
-    <canvas id="flowerCanvas" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></canvas>
+    <canvas id="canvas" class="absolute top-0 left-0 w-full h-full z-20"></canvas>
+    <canvas id="flowerCanvas" class="absolute top-0 left-0 w-full h-full z-10"></canvas>
   </div>
 
-  <!-- 依赖 -->
+  <!-- 必要依赖 -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
@@ -34,15 +34,13 @@
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
     const flowerCanvas = document.getElementById("flowerCanvas");
-    const gestureName = document.getElementById("gestureName");
-    const scoreDisplay = document.getElementById("score");
-    const statusLog = document.getElementById("status");
-
     const ctx = canvas.getContext("2d");
     const flowerCtx = flowerCanvas.getContext("2d");
 
-    let flowers = [];
-    let score = 0;
+    const gestureName = document.getElementById("gestureName");
+    const scoreDisplay = document.getElementById("score");
+    const timerDisplay = document.getElementById("timer");
+    const statusLog = document.getElementById("status");
 
     const GE = new fp.GestureEstimator([
       fp.Gestures.ThumbsUpGesture,
@@ -52,7 +50,7 @@
     ]);
 
     const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
 
     hands.setOptions({
@@ -64,8 +62,14 @@
 
     hands.onResults(onResults);
 
-    let lastResultTime = 0;
-    const MAX_IDLE_MS = 3000;
+    let score = 0;
+    let timeLeft = 30;
+    let gameActive = true;
+    let flowers = [];
+
+    // 音效（Base64）
+    const grabSound = new Audio("data:audio/mp3;base64,//uQxAAADc...（音频Base64会很长）");
+    // ⚠️ 上方的Base64省略了中间部分，为完整运行建议用外链版本或我为你提供完整base64版
 
     function logStatus(msg) {
       statusLog.textContent = `状态日志：${msg}`;
@@ -79,113 +83,112 @@
         });
         video.srcObject = stream;
         await video.play();
+
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         flowerCanvas.width = video.videoWidth;
         flowerCanvas.height = video.videoHeight;
-        lastResultTime = performance.now();
+
         requestAnimationFrame(processVideo);
+        spawnLoop = setInterval(spawnFlower, 1000);
+        countdownTimer = setInterval(updateTimer, 1000);
       } catch (e) {
-        gestureName.textContent = "摄像头启动失败，请检查权限和设备";
-        logStatus("摄像头启动失败: " + e.message);
-        console.error(e);
+        gestureName.textContent = "摄像头启动失败";
+        logStatus("摄像头失败: " + e.message);
       }
     }
 
     async function processVideo() {
-      try {
+      if (gameActive) {
         await hands.send({ image: video });
-      } catch (e) {
-        logStatus("hands.send()异常，尝试继续: " + e.message);
-        console.warn(e);
+        requestAnimationFrame(processVideo);
       }
-
-      const now = performance.now();
-      if (now - lastResultTime > MAX_IDLE_MS) {
-        logStatus("检测到识别卡住，尝试重启processVideo循环...");
-        lastResultTime = now;
-      }
-
-      requestAnimationFrame(processVideo);
     }
 
     function onResults(results) {
-      lastResultTime = performance.now();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       flowerCtx.clearRect(0, 0, flowerCanvas.width, flowerCanvas.height);
+      drawFlowers();
 
-      // 更新花朵
-      updateFlowers();
-
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-
-        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
-          color: "#22c55e",
-          lineWidth: 3,
-        });
-        drawLandmarks(ctx, landmarks, { color: "#dc2626", lineWidth: 2 });
-
-        if (landmarks.length === 21) {
-          try {
-            const est = GE.estimate(landmarks, 7.5);
-            if (est.gestures.length > 0) {
-              const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
-              gestureName.textContent = `识别到手势：${best.name}`;
-
-              // 检测是否握拳抓到花朵
-              if (best.name === "fist") {
-                const palm = landmarks[0]; // 手掌基点
-                const handX = palm.x * canvas.width;
-                const handY = palm.y * canvas.height;
-
-                flowers.forEach((flower, index) => {
-                  const dx = flower.x - handX;
-                  const dy = flower.y - handY;
-                  const distance = Math.sqrt(dx * dx + dy * dy);
-                  if (distance < 40) {
-                    score++;
-                    scoreDisplay.textContent = `得分：${score}`;
-                    flowers.splice(index, 1); // 抓住花朵
-                  }
-                });
-              }
-            } else {
-              gestureName.textContent = "手势未知";
-            }
-          } catch (e) {
-            console.error("fingerpose估计异常:", e);
-            gestureName.textContent = "手势估计出错";
-          }
-        } else {
-          gestureName.textContent = "手势关键点格式错误";
-        }
-
-        logStatus("手势检测正常运行");
-      } else {
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
         gestureName.textContent = "识别中...";
         logStatus("未检测到手");
+        return;
+      }
+
+      const landmarks = results.multiHandLandmarks[0];
+      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: "#22c55e", lineWidth: 3 });
+      drawLandmarks(ctx, landmarks, { color: "#dc2626", lineWidth: 2 });
+
+      if (landmarks.length === 21) {
+        const est = GE.estimate(landmarks, 7.5);
+        if (est.gestures.length > 0) {
+          const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
+          gestureName.textContent = `识别到手势：${best.name}`;
+          if (best.name === "fist" && gameActive) {
+            // 计算手掌中心
+            const palmIdx = [0, 5, 9, 13, 17];
+            let x = 0, y = 0;
+            palmIdx.forEach(i => {
+              x += landmarks[i].x * canvas.width;
+              y += landmarks[i].y * canvas.height;
+            });
+            x /= palmIdx.length;
+            y /= palmIdx.length;
+
+            // 判定花朵
+            for (let i = 0; i < flowers.length; i++) {
+              const dx = flowers[i].x - x;
+              const dy = flowers[i].y - y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 50) {
+                flowers.splice(i, 1);
+                score++;
+                scoreDisplay.textContent = `得分：${score}`;
+                grabSound.currentTime = 0;
+                grabSound.play();
+                break;
+              }
+            }
+          }
+        } else {
+          gestureName.textContent = "手势未知";
+        }
       }
     }
 
-    // 花朵生成和下落动画
-    function updateFlowers() {
+    function spawnFlower() {
+      if (!gameActive) return;
+      const x = Math.random() * (flowerCanvas.width - 30);
+      const speed = 2 + Math.random() * 2;
+      flowers.push({ x, y: -30, speed });
+    }
+
+    function drawFlowers() {
       flowerCtx.font = "30px serif";
-      flowers.forEach((flower) => {
+      flowers.forEach(flower => {
         flower.y += flower.speed;
         flowerCtx.fillText("🌸", flower.x, flower.y);
       });
       flowers = flowers.filter(f => f.y < flowerCanvas.height + 30);
     }
 
-    function spawnFlower() {
-      const x = Math.random() * (flowerCanvas.width - 30);
-      const speed = 2 + Math.random() * 2;
-      flowers.push({ x, y: -30, speed });
+    function updateTimer() {
+      timeLeft--;
+      if (timeLeft <= 0) {
+        timeLeft = 0;
+        gameActive = false;
+        timerDisplay.textContent = "⏱ 游戏结束！";
+        gestureName.textContent = "请刷新页面重新开始";
+        clearInterval(spawnLoop);
+        clearInterval(countdownTimer);
+      } else {
+        timerDisplay.textContent = `剩余时间：${timeLeft} 秒`;
+      }
     }
 
-    // 每秒生成一朵花
-    setInterval(spawnFlower, 1000);
+    let spawnLoop = null;
+    let countdownTimer = null;
 
     startCamera();
   </script>
