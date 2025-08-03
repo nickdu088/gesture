@@ -3,45 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>抓花朵小游戏 - 视频不镜像，骨骼不翻转</title>
+  <title>抓花朵小游戏</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
       overflow: hidden;
     }
-    #container {
-      position: relative;
-      width: 640px;
-      height: 480px;
-      max-width: 100vw;
-    }
-    video, canvas {
-      width: 640px;
-      height: 480px;
-      border-radius: 8px;
-      background: #111;
-      /* 不要镜像 */
-      /* transform: scaleX(-1); */
-      display: block;
-    }
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-    }
   </style>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4 select-none">
-  <h1 class="text-3xl font-bold mb-2">🌸 抓花朵小游戏（视频不镜像）</h1>
+  <h1 class="text-3xl font-bold mb-2">🌸 抓花朵小游戏</h1>
   <div id="gestureName" class="mb-2 text-xl min-h-[2rem]">启动中...</div>
   <div id="score" class="mb-2 text-xl">得分：0</div>
   <div id="status" class="text-sm text-gray-400 mb-4">状态日志：</div>
 
-  <div id="container">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="canvas" class="z-20"></canvas>
-    <canvas id="flowerCanvas" class="z-10"></canvas>
+  <div id="container" class="relative w-full max-w-md rounded-lg shadow-lg overflow-hidden">
+    <video id="video" autoplay playsinline muted class="w-full rounded-lg object-cover"></video>
+    <canvas id="canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none z-20"></canvas>
+    <canvas id="flowerCanvas" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></canvas>
   </div>
 
   <!-- 依赖 -->
@@ -140,7 +119,6 @@
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
 
-        // 不做镜像，直接用原始坐标绘制
         drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
           color: "#22c55e",
           lineWidth: 3,
@@ -154,22 +132,27 @@
               const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
               gestureName.textContent = `识别到手势：${best.name}`;
 
-              // 检测是否任何手势部分触碰到花朵
-              landmarks.forEach((point) => {
-                const px = point.x * canvas.width;
-                const py = point.y * canvas.height;
+              // 任意关键点触碰花朵判定
+              const points = landmarks.map(p => ({
+                x: p.x * canvas.width,
+                y: p.y * canvas.height,
+              }));
 
-                flowers.forEach((flower, index) => {
-                  const dx = flower.x - px;
-                  const dy = flower.y - py;
-                  const dist = Math.sqrt(dx * dx + dy * dy);
-                  if (dist < 40) {
-                    score++;
-                    scoreDisplay.textContent = `得分：${score}`;
-                    flowers.splice(index, 1);
-                  }
+              for (let i = flowers.length - 1; i >= 0; i--) {
+                const flower = flowers[i];
+                const touched = points.some(pt => {
+                  const dx = pt.x - flower.x;
+                  const dy = pt.y - flower.y;
+                  return Math.sqrt(dx * dx + dy * dy) < 40;
                 });
-              });
+
+                if (touched) {
+                  flowers.splice(i, 1);
+                  score++;
+                  scoreDisplay.textContent = `得分：${score}`;
+                }
+              }
+
             } else {
               gestureName.textContent = "手势未知";
             }
@@ -188,13 +171,12 @@
       }
     }
 
-    // 花朵生成和下落动画
     function updateFlowers() {
       flowerCtx.font = "30px serif";
-      flowers.forEach((flower) => {
+      for (const flower of flowers) {
         flower.y += flower.speed;
         flowerCtx.fillText("🌸", flower.x, flower.y);
-      });
+      }
       flowers = flowers.filter(f => f.y < flowerCanvas.height + 30);
     }
 
