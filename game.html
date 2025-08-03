@@ -3,24 +3,39 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>抓花朵小游戏 - 调试版</title>
+  <title>抓花朵小游戏 - 镜像校正版</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
       overflow: hidden;
     }
+    #container {
+      position: relative;
+      width: 640px;
+      height: 480px;
+    }
+    video, canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 640px;
+      height: 480px;
+      transform: scaleX(-1); /* 镜像视频和画布 */
+    }
+    #canvas, #flowerCanvas {
+      pointer-events: none;
+    }
   </style>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4 select-none">
-  <h1 class="text-3xl font-bold mb-2">🌸 抓花朵小游戏（调试版）</h1>
+  <h1 class="text-3xl font-bold mb-2">🌸 抓花朵小游戏（镜像校正版）</h1>
   <div id="gestureName" class="mb-2 text-xl min-h-[2rem]">启动中...</div>
   <div id="score" class="mb-2 text-xl">得分：0</div>
   <div id="status" class="text-sm text-gray-400 mb-4">状态日志：</div>
 
-  <div id="container" class="relative w-full max-w-md rounded-lg shadow-lg overflow-hidden">
-    <video id="video" autoplay playsinline muted class="w-full rounded-lg object-cover"></video>
-    <canvas id="canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none z-20"></canvas>
-    <canvas id="flowerCanvas" class="absolute top-0 left-0 w-full h-full pointer-events-none z-10"></canvas>
+  <div id="container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="flowerCanvas" width="640" height="480"></canvas>
+    <canvas id="canvas" width="640" height="480"></canvas>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
@@ -78,14 +93,6 @@
         });
         video.srcObject = stream;
         await video.play();
-
-        [canvas, flowerCanvas].forEach(c => {
-          c.width = video.videoWidth;
-          c.height = video.videoHeight;
-          c.style.width = video.videoWidth + "px";
-          c.style.height = video.videoHeight + "px";
-        });
-
         lastResultTime = performance.now();
         requestAnimationFrame(processVideo);
       } catch (e) {
@@ -114,6 +121,7 @@
 
     function onResults(results) {
       lastResultTime = performance.now();
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       flowerCtx.clearRect(0, 0, flowerCanvas.width, flowerCanvas.height);
 
@@ -122,28 +130,39 @@
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
 
-        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {
+        // 镜像函数
+        function flipX(x) {
+          return canvas.width - x;
+        }
+
+        // 镜像转换关键点坐标
+        const flippedLandmarks = landmarks.map(p => ({
+          x: flipX(p.x * canvas.width),
+          y: p.y * canvas.height,
+        }));
+
+        // 绘制关键点和连线
+        drawConnectors(ctx, flippedLandmarks, HAND_CONNECTIONS, {
           color: "#22c55e",
           lineWidth: 3,
         });
-        drawLandmarks(ctx, landmarks, { color: "#dc2626", lineWidth: 2 });
+        drawLandmarks(ctx, flippedLandmarks, { color: "#dc2626", lineWidth: 2 });
 
-        // 标记每个关键点，方便调试
-        landmarks.forEach((pt, idx) => {
-          const x = pt.x * canvas.width;
-          const y = pt.y * canvas.height;
+        // 关键点索引辅助调试（可选）
+        flippedLandmarks.forEach((pt, idx) => {
           ctx.beginPath();
-          ctx.arc(x, y, 5, 0, 2 * Math.PI);
-          ctx.fillStyle = "rgba(255, 255, 0, 0.8)";
+          ctx.arc(pt.x, pt.y, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = "rgba(255,255,0,0.8)";
           ctx.fill();
           ctx.strokeStyle = "black";
           ctx.lineWidth = 1;
           ctx.stroke();
           ctx.fillStyle = "black";
           ctx.font = "12px Arial";
-          ctx.fillText(idx, x + 6, y - 6);
+          ctx.fillText(idx, pt.x + 6, pt.y - 6);
         });
 
+        // 手势识别
         if (landmarks.length === 21) {
           try {
             const est = GE.estimate(landmarks, 7.5);
@@ -151,14 +170,10 @@
               const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
               gestureName.textContent = `识别到手势：${best.name}`;
 
-              const points = landmarks.map(p => ({
-                x: p.x * canvas.width,
-                y: p.y * canvas.height,
-              }));
-
+              // 碰撞检测 - 任意关键点触碰花朵
               for (let i = flowers.length - 1; i >= 0; i--) {
                 const flower = flowers[i];
-                const touched = points.some(pt => {
+                const touched = flippedLandmarks.some(pt => {
                   const dx = pt.x - flower.x;
                   const dy = pt.y - flower.y;
                   return Math.sqrt(dx * dx + dy * dy) < 50;
@@ -191,11 +206,8 @@
       flowerCtx.font = "30px serif";
       flowers.forEach((flower) => {
         flower.y += flower.speed;
-
-        // 画花朵
         flowerCtx.fillText("🌸", flower.x, flower.y);
 
-        // 画检测圆圈，调试用
         flowerCtx.beginPath();
         flowerCtx.strokeStyle = "yellow";
         flowerCtx.lineWidth = 2;
