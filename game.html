@@ -67,10 +67,6 @@
     let gameActive = true;
     let flowers = [];
 
-    // 音效（Base64）
-    const grabSound = new Audio("data:audio/mp3;base64,//uQxAAADc...（音频Base64会很长）");
-    // ⚠️ 上方的Base64省略了中间部分，为完整运行建议用外链版本或我为你提供完整base64版
-
     function logStatus(msg) {
       statusLog.textContent = `状态日志：${msg}`;
     }
@@ -145,8 +141,6 @@
                 flowers.splice(i, 1);
                 score++;
                 scoreDisplay.textContent = `得分：${score}`;
-                grabSound.currentTime = 0;
-                grabSound.play();
                 break;
               }
             }
