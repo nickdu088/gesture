@@ -7,7 +7,14 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-black text-green-400 flex flex-col items-center min-h-screen p-4">
-  <h1 class="text-3xl font-bold mb-4 select-none">🖐️ 实时手势骨架跟踪</h1>
+  
+  <!-- 语言切换按钮 -->
+  <div class="self-end mb-4">
+    <button id="btn-zh" class="mr-2 px-3 py-1 rounded border border-green-400 hover:bg-green-400 hover:text-black">中文</button>
+    <button id="btn-en" class="px-3 py-1 rounded border border-green-400 hover:bg-green-400 hover:text-black">English</button>
+  </div>
+
+  <h1 id="title" class="text-3xl font-bold mb-4 select-none">🖐️ 实时手势骨架跟踪</h1>
   <div id="gestureName" class="mb-4 text-xl min-h-[2rem] select-none">启动中...</div>
   <div id="status" class="mb-4 text-sm text-gray-400 select-none">状态日志：</div>
 
@@ -33,6 +40,65 @@
   <script src="https://cdn.jsdelivr.net/npm/fingerpose@0.1.0/dist/fingerpose.min.js"></script>
 
   <script>
+    // 多语言文本包
+    const texts = {
+      zh: {
+        title: "🖐️ 实时手势骨架跟踪",
+        starting: "启动中...",
+        statusLog: "状态日志：",
+        requestingCamera: "请求摄像头权限...",
+        cameraStarted: "摄像头启动成功，初始化画布尺寸...",
+        cameraFailed: "摄像头启动失败，请检查权限和设备",
+        cameraFailedLog: "摄像头启动失败: ",
+        handsSendError: "hands.send()异常，尝试继续: ",
+        idleDetected: "检测到识别卡住，尝试重启processVideo循环...",
+        gestureDetected: "识别到手势：",
+        unknownGesture: "手势未知",
+        gestureEstimateError: "手势估计出错",
+        gestureFormatError: "手势关键点格式错误",
+        handNotDetected: "未检测到手",
+        detectionRunning: "手势检测正常运行",
+      },
+      en: {
+        title: "🖐️ Real-time Gesture Skeleton Tracking",
+        starting: "Starting...",
+        statusLog: "Status Log:",
+        requestingCamera: "Requesting camera permission...",
+        cameraStarted: "Camera started successfully, initializing canvas size...",
+        cameraFailed: "Failed to start camera, please check permissions and device",
+        cameraFailedLog: "Camera failed to start: ",
+        handsSendError: "hands.send() error, attempting to continue: ",
+        idleDetected: "Detected recognition stall, restarting processVideo loop...",
+        gestureDetected: "Gesture detected: ",
+        unknownGesture: "Unknown gesture",
+        gestureEstimateError: "Gesture estimation error",
+        gestureFormatError: "Gesture keypoints format error",
+        handNotDetected: "No hand detected",
+        detectionRunning: "Gesture detection running normally",
+      }
+    };
+
+    // 当前语言，默认中文
+    let currentLang = "en";
+
+    // 根据当前语言更新页面文本
+    function updateTexts() {
+      document.getElementById("title").textContent = texts[currentLang].title;
+      gestureName.textContent = texts[currentLang].starting;
+      statusLog.textContent = texts[currentLang].statusLog;
+    }
+
+    // 语言切换按钮
+    document.getElementById("btn-zh").addEventListener("click", () => {
+      currentLang = "zh";
+      updateTexts();
+    });
+    document.getElementById("btn-en").addEventListener("click", () => {
+      currentLang = "en";
+      updateTexts();
+    });
+
+    // 获取页面元素
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
@@ -63,25 +129,25 @@
     const MAX_IDLE_MS = 3000;
 
     function logStatus(msg) {
-      statusLog.textContent = `状态日志：${msg}`;
+      statusLog.textContent = texts[currentLang].statusLog + msg;
     }
 
     async function startCamera() {
       try {
-        logStatus("请求摄像头权限...");
+        logStatus(texts[currentLang].requestingCamera);
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user", width: 640, height: 480 },
         });
         video.srcObject = stream;
         await video.play();
-        logStatus("摄像头启动成功，初始化画布尺寸...");
+        logStatus(texts[currentLang].cameraStarted);
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         lastResultTime = performance.now();
         requestAnimationFrame(processVideo);
       } catch (e) {
-        gestureName.textContent = "摄像头启动失败，请检查权限和设备";
-        logStatus("摄像头启动失败: " + e.message);
+        gestureName.textContent = texts[currentLang].cameraFailed;
+        logStatus(texts[currentLang].cameraFailedLog + e.message);
         console.error(e);
       }
     }
@@ -90,13 +156,13 @@
       try {
         await hands.send({ image: video });
       } catch (e) {
-        logStatus("hands.send()异常，尝试继续: " + e.message);
+        logStatus(texts[currentLang].handsSendError + e.message);
         console.warn(e);
       }
 
       const now = performance.now();
       if (now - lastResultTime > MAX_IDLE_MS) {
-        logStatus("检测到识别卡住，尝试重启processVideo循环...");
+        logStatus(texts[currentLang].idleDetected);
         lastResultTime = now;
       }
       requestAnimationFrame(processVideo);
@@ -121,25 +187,27 @@
             const est = GE.estimate(landmarks, 7.5);
             if (est.gestures.length > 0) {
               const best = est.gestures.reduce((p, c) => (p.score > c.score ? p : c));
-              gestureName.textContent = `识别到手势：${best.name}`;
+              gestureName.textContent = texts[currentLang].gestureDetected + best.name;
             } else {
-              gestureName.textContent = "手势未知";
+              gestureName.textContent = texts[currentLang].unknownGesture;
             }
           } catch (e) {
             console.error("fingerpose估计异常:", e);
-            gestureName.textContent = "手势估计出错";
+            gestureName.textContent = texts[currentLang].gestureEstimateError;
           }
         } else {
-          gestureName.textContent = "手势关键点格式错误";
+          gestureName.textContent = texts[currentLang].gestureFormatError;
         }
 
-        logStatus("手势检测正常运行");
+        logStatus(texts[currentLang].detectionRunning);
       } else {
-        gestureName.textContent = "识别中...";
-        logStatus("未检测到手");
+        gestureName.textContent = texts[currentLang].starting;
+        logStatus(texts[currentLang].handNotDetected);
       }
     }
 
+    // 初始化页面文本
+    updateTexts();
     startCamera();
   </script>
 </body>
