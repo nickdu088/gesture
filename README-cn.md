@@ -1,7 +1,7 @@
 # 实时手势骨架跟踪 / Real-time Gesture Skeleton Tracking
 
 基于 MediaPipe Hands、TensorFlow.js 和 Fingerpose 实现的实时手势识别网页示例，支持中英文多语言界面。
-
+演示： https://nickdu088.github.io/gesture/
 ---
 
 ## 功能 Features
