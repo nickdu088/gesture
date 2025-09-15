@@ -16,7 +16,7 @@ A real-time gesture recognition web application based on MediaPipe Hands, Tensor
 
 ## Preview
 
-![Screenshot Example](screenshot.png)
+![Screenshot Example](screenshot.jpeg)
 
 ## How to Use
 
