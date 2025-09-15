@@ -16,7 +16,7 @@
 
 ## 预览 Preview
 
-![截图示例](/screenshot.png)  
+![截图示例](/screenshot.jpeg)  
 *（可选：放置一个项目截图链接）*
 
 ---
